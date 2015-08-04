@@ -1,0 +1,33 @@
+function spikeMatrix = makeSpikeMatrix(spLocs, spikeFs, Fs, spPks, pksLimit)
+
+% Function to convert a cell array of spike locations in time (SPLOCS)
+% sampled at SPIKEFS Hz to a binary matrix with sampling frequency FS Hz
+% inticating the presence or absence of a spike at every location at every
+% time step.
+%   - If the optional PKSLIMIT is set, spikes will be categorized into two
+%     populations based on whether their value in SPPKS is above or below
+%     PKSLIMIT. Spikes below the limit will be denoted by -1 in
+%     SPIKEMATRIX, those above will have +1.
+
+
+% Initialize output matrix
+lastSpikeIndex = ceil( max( cell2mat(cellfun(@max, spLocs, 'UniformOutput', false))));
+spikeMatrix = zeros(100, lastSpikeIndex);
+
+% Loop over all channels
+for ich = 1:100
+        spikeTimesIndex = round(spLocs{ich} * Fs / spikeFs);
+        % Change time zeros entries to 1 to avoid problems
+        spikeTimesIndex(spikeTimesIndex < 1) = 1;
+        
+        % Sort spikes into 2 populations if peaks value is given
+        if nargin > 3 && isnumeric(pksLimit)
+            ipks = spPks{ich};
+            spikeMatrix(ich, spikeTimesIndex(ipks<pksLimit)) = -1;
+            spikeMatrix(ich, spikeTimesIndex(ipks>=pksLimit)) = +1;
+        else
+            spikeMatrix(ich, spikeTimesIndex) = -1;
+        end
+end
+
+end

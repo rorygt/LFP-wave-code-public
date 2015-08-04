@@ -1,0 +1,95 @@
+% Script to load single-unit spike characteristics and try to classify into
+% regular and fast firing populations
+
+%% Load spiking data and classify
+% Choose which file to open
+fileNum = 2;
+
+switch fileNum
+    case 1
+        fileName = './MY144-101_spikes.mat';
+    case 2
+        fileName = './MY145-114_spikes.mat';
+end
+
+load(fileName)
+
+% Set limit for PKS to classify between excitatory and inhibitory populations 
+%pksLim = 9e-5; %MY145-114
+pksLim = 5e-5; %MY144-101
+
+% Process spikes into a firing matrix
+spikeMatrix = makeSpikeMatrix(spLocs, spikeFs, Fs, spPks, pksLim);
+
+% Calculate different statistics
+allPks = cell2mat(spPks);
+meanPks = cellfun(@mean, spPks);
+totalSpikes = cellfun(@length, spPks);
+% maxHeight = cellfun(@(x) mean(max(x,[],2)), spWaves);
+% minHeight = cellfun(@(x) mean(min(x,[],2)), spWaves);
+% peakToPeak = cellfun(@(x) mean(max(x,[],2)-min(x,[],2)), spWaves);
+% allPeakToPeak = cell2mat(cellfun(@(x) max(x,[],2)-min(x,[],2), spWaves, 'UniformOutput', 0));
+% allHeight = cell2mat(cellfun(@(x) max(x,[],2), spWaves, 'UniformOutput', 0));
+
+% Make a plot illustrating whether electrodes measured excitatory,
+% inhibitory or no spikes
+subplot(2,2,1)
+totSpikes = sum(spikeMatrix, 2);
+nCells = sum([totSpikes<0, totSpikes>0, totSpikes==0]);
+displayGrid(sign(vector2grid(totSpikes)), hot)
+title('Type of spikes recorded from each channel: black = E, white = I, ORANGE = none')
+
+% Plot a histogram of PKS values and draw a line for the cutoff values
+subplot(2,2,2)
+hist(allPks, 50)
+xlabel('PKS value')
+ylabel('Frequency of spikes')
+hold on
+line([pksLim pksLim], ylim, 'Color', 'r')
+hold off
+
+% Bin both types of spikes, normalize and plot together
+subplot(2,2,3)
+binSize = 1024;
+binRange = 1:50;
+[excBinned, bins] = binSpikes(spikeMatrix == -1, binSize, 1);
+[inhBinned, ~] = binSpikes(spikeMatrix == +1, binSize, 1);
+bar(bins(binRange)/Fs, excBinned(binRange) / nCells(1), 1, 'b', 'EdgeColor', 'b')
+hold on
+bar(bins(binRange)/Fs, -inhBinned(binRange) / nCells(2), 1, 'r', 'EdgeColor', 'r')
+xlim(bins(binRange([1 end]))/Fs)
+xlabel('Time (s)')
+title('Normalized population firing rate')
+hold off
+
+% % Plot cross-correlation between binned excitatory and inhibitory firing
+% % rates
+% subplot(2,2,4)
+% [r, lags] = xcorr(excBinned, inhBinned);
+% plot(lags/Fs*binSize, r)
+% xlim([-200, 200]/Fs)
+% title('Cross-correlation between excitation and inhibition')
+% xlabel('Time (s)')
+
+% Bin total spikes with a sliding window and look at the variations in
+% firing rate for excitation and inhibition over time
+subplot(2,2,4)
+slidingBin = 100;
+time = 1024+(1:10240); % Roughly 10 second, as Fs ~= 1024
+firingRateI = calculateFiringRate(spikeMatrix(:,time) == +1, slidingBin, Fs);
+[firingRateE, ~, timeIndex] = calculateFiringRate(spikeMatrix(:,time) == -1, ...
+    slidingBin, Fs);
+
+% Cut off the ends where no average is taken
+time = time(timeIndex);
+firingRateI = firingRateI(timeIndex);
+firingRateE = firingRateE(timeIndex);
+
+% Plot smoothed normalized firing rates for excitatory vs inhibitory cells
+plot(time/Fs, firingRateE / mean(firingRateE), time/Fs, ...
+    firingRateI / mean(firingRateI))
+xlim([time(1), time(end)] / Fs)
+xlabel('Time (s)')
+ylabel('Normalized firing rate')
+title('Excitatory vs inhibitory spiking with sliding window')
+
